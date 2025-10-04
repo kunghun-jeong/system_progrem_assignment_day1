@@ -209,7 +209,7 @@ int bitNor(int x, int y) {
  *   Rating: 2
  */
 int isPositive(int x) {
-  return 2;
+  return ( ( ! ( ( x >> 31) ) & 1 ) & !!x);
 }
 /* 
  * getByte - Extract byte n from word x
@@ -220,7 +220,7 @@ int isPositive(int x) {
  *   Rating: 2
  */
 int getByte(int x, int n) {
-  return 2;
+  return ((x >> ( n << 3 )) & 0xff);
 }
 /*
  * isSymmetric - return 1 if x is symmetrical, 0 otherwise
@@ -230,8 +230,14 @@ int getByte(int x, int n) {
  *   Rating: 2
  */
 int isSymmetric(int x) {
-  return 2;
+  int m8  = 0xFF;
+  int m16 = m8 | (m8 << 8);
+  int hi  = (x >> 16) & m16;
+  int lo  = x & m16;
+  return !(hi ^ lo);
 }
+
+
 /* 
  * sign - return 1 if positive, 0 if zero, and -1 if negative
  *  Examples: sign(130) = 1
@@ -241,7 +247,7 @@ int isSymmetric(int x) {
  *  Rating: 2
  */
 int sign(int x) {
-    return 2;
+    return ((x >> 31) | (!!x));
 }
 /* 
  * allEvenBits - return 1 if all even-numbered bits in word set to 1
@@ -252,9 +258,14 @@ int sign(int x) {
  *   Rating: 2
  */
 int allEvenBits(int x) {
-  return 2;
-}
-/* 
+
+int m=0x55;
+m=m | (m<<4);
+m=m | (m<<8);
+m=m | (m<<16);
+
+ return !( ~x & m);
+}/* 
  * dividePower2 - Compute x/(2^n), for 0 <= n <= 30
  *  Round toward zero
  *   Examples: dividePower2(15,1) = 7, dividePower2(-33,4) = -2
@@ -263,7 +274,13 @@ int allEvenBits(int x) {
  *   Rating: 2
  */
 int dividePower2(int x, int n) {
-    return 2;
+int sign = (x >> 31);
+
+int basebias=(1<<n) + ~0;
+int bias= (sign & basebias);
+
+return (x+bias) >> n;
+
 }
 /* 
  * subtractionOK - Determine if can compute x-y without overflow
@@ -274,7 +291,13 @@ int dividePower2(int x, int n) {
  *   Rating: 3
  */
 int subtractionOK(int x, int y) {
-  return 2;
+int shift_x= x >> 31;
+int shift_y= y >> 31;
+
+int subtrac = x + (~y +1);
+int shift_subtrac = subtrac >> 31;
+
+return !((shift_x ^ shift_y) & (shift_x ^ shift_subtrac));
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -283,9 +306,17 @@ int subtractionOK(int x, int y) {
  *   Max ops: 24
  *   Rating: 3
  */
-int isLessOrEqual(int x, int y) {
-  return 2;
+ int isLessOrEqual(int x, int y) {
+  int sx = x >> 31;
+  int sy = y >> 31;
+  int signDiff = sx ^ sy;
+  int diff = y + (~x + 1);
+  int sd = (diff >> 31) & 1;
+  int xNeg_when_diffSigns = sx & 1;
+  int sameSign_le = !sd;
+  return (signDiff & xNeg_when_diffSigns) | ((~signDiff) & sameSign_le);
 }
+
 /* 
  * rotateRight - Rotate x to the right by n
  *   Can assume that 0 <= n <= 31
@@ -295,8 +326,14 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 3 
  */
 int rotateRight(int x, int n) {
-  return 2;
+  int k     = (32 + (~n + 1)) & 31;
+  int left  = x << k;
+  int mask  = (1 << k) + ~0;
+  int right = (x >> n) & mask;
+  return left | right;
 }
+
+
 /*
  * isAsciiAlpha - return 1 if 0x41 <= x <= 0x5a or 0x61 <= x <= 0x7a (ASCII
  * codes for characters 'a' to 'z' and 'A' to 'Z') Example:
@@ -305,9 +342,13 @@ int rotateRight(int x, int n) {
  *   Max ops: 20
  *   Rating: 3
  */
+
+
 int isAsciiAlpha(int x) {
-  return 2;
+  int y = x | 0x20;
+  return !(((y + (~0x61 + 1)) >> 31) | ((0x7A + (~y + 1)) >> 31));
 }
+
 /*
  * satMul3 - multiplies by 3, saturating to Tmin or Tmax if overflow
  *  Examples: satMul3(0x10000000) = 0x30000000
@@ -320,8 +361,17 @@ int isAsciiAlpha(int x) {
  *  Rating: 3
  */
 int satMul3(int x) {
-    return 2;
+  int tw = x << 1;
+  int th = tw + x;                  /* 3x */
+  int ov = ((x ^ tw) | (tw ^ th)) >> 31;  /* 부호 변하면 overflow → ov = -1, 아니면 0 */
+  int s = x >> 31;                  /* x의 부호 (포화 방향 결정) */
+  int Tmin = 1 << 31;
+  int Tmax = ~Tmin;
+  int sat = (s & Tmin) | (~s & Tmax);     /* 음수면 Tmin, 양수면 Tmax */
+  /* ov가 -1이면 sat, 0이면 th */
+  return (ov & sat) | (~ov & th);
 }
+
 /* 
  * floatScale4 - Return bit-level equivalent of expression 4*f for
  *   floating point argument f.
@@ -334,8 +384,31 @@ int satMul3(int x) {
  *   Rating: 4
  */
 unsigned floatScale4(unsigned uf) {
-    return 2;
+  unsigned sign = uf & 0x80000000u;
+  unsigned exp  = (uf >> 23) & 0xFFu;
+  unsigned frac = uf & 0x7FFFFFu;
+
+  int i;
+  for (i = 0; i < 2; i++) {
+    if (exp == 0xFF) {
+      return uf;
+    } else if (exp == 0) {
+      frac <<= 1;
+      if (frac & 0x800000u) {
+        exp = 1;
+        frac &= 0x7FFFFFu;
+      }
+    } else {
+      exp += 1;
+      if (exp == 0xFF) {
+        frac = 0;
+      }
+    }
+    uf = sign | (exp << 23) | frac;
+  }
+  return sign | (exp << 23) | frac;
 }
+
 /*
  * trueSevenSixteenths - multiplies by 7/16 rounding toward 0,
  *  avoiding errors due to overflow
@@ -346,7 +419,24 @@ unsigned floatScale4(unsigned uf) {
  *  Max ops: 25
  *  Rating: 4
  */
-int trueSevenSixteenths(int x)
-{
-    return 2;
+int trueSevenSixteenths(int x) {
+
+  int sign = x >> 31;
+  int bias16 = sign & 15;
+  int q = (x + bias16) >> 4;
+
+
+  int r = x + (~(q << 4) + 1);
+
+
+  int q7 = (q << 2) + (q << 1) + q;
+
+
+  int r7 = (r << 2) + (r << 1) + r;
+  int bias_r7 = (r7 >> 31) & 15;
+  int adj = (r7 + bias_r7) >> 4;
+
+  return q7 + adj;
 }
+
+
